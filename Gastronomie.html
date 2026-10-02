@@ -1,0 +1,120 @@
+<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>Gastronomie</title>
+<style>
+:root{--bg:#f6f4ef;--fg:#222;--c:#fff;--ac:#b4472b;--ok:#bfe8c4;--bd:#d9d4c8}
+@media (prefers-color-scheme:dark){:root{--bg:#1d1b19;--fg:#eee;--c:#2a2825;--ac:#e0704f;--ok:#2f5d37;--bd:#44403a}}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px system-ui,sans-serif}
+#app{max-width:720px;margin:0 auto;padding:12px}
+h2{margin:8px 0}
+button{font:inherit;border:1px solid var(--bd);background:var(--c);color:var(--fg);border-radius:10px;padding:10px 14px;cursor:pointer}
+button.p{background:var(--ac);color:#fff;border-color:var(--ac)}
+button.big{font-size:22px;padding:28px 10px;width:100%}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px;margin:10px 0}
+.card{background:var(--c);border:1px solid var(--bd);border-radius:12px;padding:10px;margin:10px 0}
+.row{display:flex;gap:6px;align-items:center;margin:4px 0}
+.row>span{flex:1}
+input,select{font:inherit;padding:9px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--fg);min-width:0;flex:1;width:100%}
+input.pr{max-width:90px;flex:none}
+.done{background:var(--ok);border-radius:8px;padding:4px}
+.top{display:flex;gap:8px;align-items:center}
+.tot{font-weight:700;text-align:right;margin-top:8px}
+.crumb{opacity:.7;margin:6px 0}
+.bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}.bar button{padding:4px 12px;border-radius:50%;font-weight:700}.bar span{opacity:.6;font-size:13px}
+table{width:100%;border-collapse:collapse}td,th{padding:6px;border-bottom:1px solid var(--bd);text-align:left}td.r,th.r{text-align:right}
+</style>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+</head><body><div id="app"></div>
+<script>
+const VER='v1.0';
+firebase.initializeApp({apiKey:"AIzaSyB7OsMor2qno2N3LfK3LHHiQFsENDY2K2I",authDomain:"gastronomie-8ee9d.firebaseapp.com",projectId:"gastronomie-8ee9d",storageBucket:"gastronomie-8ee9d.firebasestorage.app",messagingSenderId:"10693713372",appId:"1:10693713372:web:6440aa0ce95ddd5ad80319"});
+const db=firebase.firestore();
+let S={ops:[],tables:[],tree:[],tab:{},queue:[],sales:[],pwApp:null,pwSet:null,info:''};
+let showI=0,V='home',op='',tb='',path=[],pay={},qid=null,fOp='',err='',ferr='',rdy={},pend=0,acc='';
+try{acc=localStorage.getItem('gacc')||''}catch(e){}
+const A=document.getElementById('app');
+const uid=()=>Math.random().toString(36).slice(2,9);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const eur=n=>n.toFixed(2).replace('.',',')+' €';
+const go=v=>{V=v;err='';render()};
+const kk=t=>encodeURIComponent(t);
+const fn=(a,id)=>{for(const n of a){if(n.id==id)return[a,n];const r=n.c&&fn(n.c,id);if(r)return r}};
+const rr=()=>{const t=document.activeElement&&document.activeElement.tagName;if(t=='INPUT'||t=='SELECT')pend=1;else render()};
+document.addEventListener('focusout',()=>{if(pend){pend=0;setTimeout(render,300)}});
+// Firebase
+const onErr=e=>{ferr=e.message;render()};
+const onDoc=(p,cb)=>db.doc(p).onSnapshot(s=>{cb(s.exists?s.data():{});rdy[p]=1;rr()},onErr);
+onDoc('meta/appzugriff',d=>S.pwApp=d.passwort);
+onDoc('meta/info',d=>S.info=d.text||'');
+onDoc('meta/zugriff',d=>S.pwSet=d.passwort);
+onDoc('cfg/ops',d=>S.ops=d.list||[]);
+onDoc('cfg/tables',d=>S.tables=d.list||[]);
+onDoc('cfg/tree',d=>S.tree=d.tree||[]);
+db.collection('tische').onSnapshot(q=>{S.tab={};q.forEach(d=>S.tab[d.id]=d.data());rr()},onErr);
+db.collection('ausgabe').onSnapshot(q=>{S.queue=[];q.forEach(d=>S.queue.push({...d.data(),id:d.id}));S.queue.sort((a,b)=>a.ts-b.ts);rr()},onErr);
+db.collection('umsatz').onSnapshot(q=>{S.sales=[];q.forEach(d=>S.sales.push(d.data()));rr()},onErr);
+const sv=k=>db.doc('cfg/'+k).set(JSON.parse(JSON.stringify(k=='tree'?{tree:S.tree}:{list:S[k]})));
+const T=()=>{const k=kk(tb),t=S.tab[k]=S.tab[k]||{t:tb};t.draft=t.draft||[];t.open=t.open||[];return t};
+const st=()=>db.doc('tische/'+kk(tb)).set(T());
+const BACK={bed:'home',tv:'bed',ord:'tv',pay:'tv',ausg:'home',ausT:'ausg',abr:'home',set:'home',lock:'home',sops:'set',stbl:'set',stree:'set'};
+const TT=()=>({bed:'Bediener',tv:'Tisch '+tb,ord:'Bestellung · Tisch '+tb,pay:'Zahlen · Tisch '+tb,ausg:'Ausgabe',ausT:'Tisch '+tb,abr:'Abrechnung',set:'Einstellungen',lock:'Einstellungen',sops:'Bedienervorgabe',stbl:'Tische',stree:'Artikel'});
+// Listen
+const LE=k=>`<div class=card>${S[k].map((x,i)=>`<div class=row><input value="${esc(x)}" onchange="S.${k}[${i}]=this.value.trim()||S.${k}[${i}];sv('${k}')"><button onclick="S.${k}.splice(${i},1);sv('${k}')">🗑</button></div>`).join('')}<div class=row><input id="n_${k}" placeholder="Neu hinzufügen"><button class=p onclick="addL('${k}')">+</button></div></div>`;
+const addL=k=>{const v=document.getElementById('n_'+k).value.trim();if(v){S[k].push(v);sv(k)}};
+// Baum
+const TE=(a,d)=>a.map(n=>`<div style="margin-left:${d?14:0}px"><div class=row><input value="${esc(n.name)}" onchange="ren('${n.id}',this.value)">${n.c.length?'':`<input class=pr type=number step=0.01 placeholder="Preis" value="${n.p??''}" onchange="prc('${n.id}',this.value)">`}<button onclick="addC('${n.id}')">+</button><button onclick="delN('${n.id}')">🗑</button></div>${TE(n.c,1)}</div>`).join('');
+const ren=(id,v)=>{fn(S.tree,id)[1].name=v.trim()||'?';sv('tree')};
+const prc=(id,v)=>{const n=fn(S.tree,id)[1];if(v==='')delete n.p;else n.p=parseFloat(v);sv('tree')};
+const addC=id=>{const n=fn(S.tree,id)[1];delete n.p;n.c.push({id:uid(),name:'Neu',c:[]});sv('tree')};
+const delN=id=>{const r=fn(S.tree,id);r[0].splice(r[0].indexOf(r[1]),1);sv('tree')};
+// Bestellung
+const cur=()=>path.reduce((a,id)=>fn(a,id)[1].c,S.tree);
+const addItem=id=>{const n=fn(S.tree,id)[1];if(n.p==null)return;
+ const names=[...path.map(i=>fn(S.tree,i)[1].name),n.name];const name=names.slice(names.length>1?1:0).join(' ');
+ const d=T().draft,e=d.find(x=>x.id==id);e?e.q++:d.push({id,name,p:n.p,q:1});path=[];st();render()};
+const chg=(i,d)=>{const L=T().draft;L[i].q+=d;if(L[i].q<1)L.splice(i,1);st();render()};
+const send=()=>{const t=T(),L=t.draft;if(!L.length)return;const k=kk(tb);
+ const e=S.queue.find(x=>x.id==k)||{t:tb,ts:Date.now(),items:[]};
+ L.forEach(x=>{e.items.push({name:x.name,q:x.q,done:false});const kx=x.id+'|'+op;const m=t.open.find(y=>y.k==kx);m?m.q+=x.q:t.open.push({k:kx,name:x.name,p:x.p,q:x.q,op})});
+ t.draft=[];st();db.doc('ausgabe/'+k).set(e);go('tv')};
+// Zahlen
+const pc=k=>pay[k]||0;
+const padd=(k,d)=>{const m=T().open.find(y=>y.k==k);const n=pc(k)+d;if(n<0||n>m.q)return;pay[k]=n;if(!n)delete pay[k];render()};
+const odel=k=>{const t=T();t.open=t.open.filter(y=>y.k!=k);delete pay[k];st();render()};
+const paid=()=>{const t=T();Object.keys(pay).forEach(k=>{const m=t.open.find(y=>y.k==k);db.collection('umsatz').add({op:m.op,name:m.name,p:m.p,q:pay[k],ts:Date.now()});m.q-=pay[k]});t.open=t.open.filter(y=>y.q>0);pay={};st();render()};
+// Ausgabe
+const tgl=j=>{const e=S.queue.find(x=>x.id==qid);e.items[j].done=!e.items[j].done;db.doc('ausgabe/'+qid).set(e)};
+const pick=()=>{db.doc('ausgabe/'+qid).delete();go('ausg')};
+// Zugang
+const login=()=>{const v=document.getElementById('ac').value;if(S.pwApp!=null&&v===String(S.pwApp)){acc=v;try{localStorage.setItem('gacc',v)}catch(e){}render()}else{err='Falscher Zugangscode';render()}};
+const unlock=()=>{if(S.pwSet==null){err='Kein Passwort in Firebase hinterlegt (meta/zugriff/passwort)';render();return}if(document.getElementById('pw').value===String(S.pwSet))go('set');else{err='Falsches Passwort';render()}};
+const setPw=()=>{const v=document.getElementById('npw').value.trim();if(v){db.doc('meta/zugriff').set({passwort:v},{merge:true});alert('Passwort geändert')}};
+const info=()=>`<div class=card>${S.info?esc(S.info).replace(/\n/g,'<br>'):'<i>Kein Infotext hinterlegt</i>'}</div>`;
+function body(){
+ if(ferr)return`<div class=card style="color:var(--ac)"><b>Verbindungsfehler</b><br>${esc(ferr)}</div>`;
+ if(!rdy['meta/appzugriff'])return'<i>Verbinde …</i>';
+ if(S.pwApp==null||acc!==String(S.pwApp))return`<h2>Gastronomie</h2><div class=card><p>Zugangscode</p><div class=row><input id=ac type=password><button class=p onclick="login()">OK</button></div><p style="color:var(--ac)">${esc(err)}</p></div>`;
+ if(V=='home')return`<h2>Gastronomie</h2><div class=grid style="grid-template-columns:1fr 1fr"><button class=big onclick="go('bed')">Bediener</button><button class=big onclick="go('ausg')">Ausgabe${S.queue.length?' ('+S.queue.length+')':''}</button><button class=big onclick="go('abr')">Abrechnung</button><button class=big onclick="go('lock')">Einstellungen</button></div>`;
+ if(V=='lock')return`<div class=card><p>Passwort</p><div class=row><input id=pw type=password><button class=p onclick="unlock()">OK</button></div><p style="color:var(--ac)">${esc(err)}</p></div>`;
+ if(V=='set')return`<div class=grid style="grid-template-columns:1fr"><button class=big onclick="go('sops')">Bedienervorgabe</button><button class=big onclick="go('stbl')">Tische</button><button class=big onclick="go('stree')">Artikel</button></div><div class=card><b>Passwort ändern</b><div class=row><input id=npw placeholder="Neues Passwort"><button onclick="setPw()">OK</button></div></div>`;
+ if(V=='sops')return LE('ops');
+ if(V=='stbl')return LE('tables');
+ if(V=='stree')return`<div class=card><b>Artikel</b> (Preis nur am letzten Ast)${TE(S.tree,0)}<button class=p onclick="S.tree.push({id:uid(),name:'Neu',c:[]});sv('tree')">+ Hauptgruppe</button></div>`;
+ if(V=='bed')return`<select onchange="op=this.value"><option value="">– Bediener wählen –</option>${S.ops.map(o=>`<option ${o==op?'selected':''}>${esc(o)}</option>`).join('')}</select><div class=grid>${S.tables.map(t=>`<button class=big style="font-size:20px;padding:24px 4px" onclick="if(!op){alert('Bitte Bediener wählen');return}tb='${esc(t)}';go('tv')">${esc(t)}</button>`).join('')}</div>`;
+ if(V=='tv')return`<div class=grid style="grid-template-columns:1fr 1fr"><button class=big onclick="path=[];go('ord')">Bestellung</button><button class=big onclick="pay={};go('pay')">Zahlen</button></div>`;
+ if(V=='ord'){const nm=['Artikel',...path.map(i=>fn(S.tree,i)[1].name)].join(' › ');const L=T().draft;
+  return`<div class=crumb>${esc(nm)} ${path.length?`<button onclick="path.pop();render()">↩</button>`:''}</div><div class=grid>${cur().map(n=>`<button style="padding:20px 6px" onclick="${n.c.length?`path.push('${n.id}');render()`:`addItem('${n.id}')`}">${esc(n.name)}${n.c.length?' ›':n.p!=null?'<br>'+eur(n.p):''}</button>`).join('')}</div>
+  <div class=card><b>Bestellung Tisch ${esc(tb)}</b>${L.map((x,i)=>`<div class=row><span>${esc(x.name)}</span><button onclick="chg(${i},-1)">−</button><b>${x.q}</b><button onclick="chg(${i},1)">+</button><button onclick="T().draft.splice(${i},1);st();render()">🗑</button></div>`).join('')||'<i>leer</i>'}</div><button class="p big" style="padding:16px" onclick="send()">Abschicken</button>`}
+ if(V=='pay'){const o=T().open;let tot=0;const pl=o.filter(m=>pc(m.k));
+  return`<div class=card><b>Offen</b>${o.map(m=>`<div class=row><span>${m.q}× ${esc(m.name)} <small>${eur(m.p)}</small></span><button onclick="padd('${m.k}',1)">+</button><button onclick="odel('${m.k}')">🗑</button></div>`).join('')||'<i>nichts offen</i>'}</div>
+  <div class=card><b>Zu bezahlen</b>${pl.map(m=>{const s=m.p*pc(m.k);tot+=s;return`<div class=row><span>${pc(m.k)}× ${esc(m.name)}</span><button onclick="padd('${m.k}',-1)">−</button><b>${eur(s)}</b></div>`}).join('')||'<i>leer</i>'}<div class=tot>Gesamt: ${eur(tot)}</div></div><button class="p big" style="padding:16px" onclick="paid()">Bezahlt</button>`}
+ if(V=='ausg')return S.queue.length?`<div class=grid>${S.queue.map(e=>`<button class=big style="${e.items.every(i=>i.done)?'background:var(--ok)':''}" onclick="qid='${e.id}';tb='${esc(e.t)}';go('ausT')">${esc(e.t)}</button>`).join('')}</div>`:'<i>Keine Bestellungen</i>';
+ if(V=='ausT'){const e=S.queue.find(x=>x.id==qid);if(!e)return'<i>Nicht mehr vorhanden</i>';return`<div class=card>${e.items.map((x,j)=>`<label class="row ${x.done?'done':''}"><input type=checkbox style="flex:none;width:28px;height:28px" ${x.done?'checked':''} onchange="tgl(${j})"><span>${x.q}× ${esc(x.name)}</span></label>`).join('')}</div><button class="p big" style="padding:16px" onclick="pick()">Abgeholt</button>`}
+ if(V=='abr'){const L=S.sales.filter(s=>!fOp||s.op==fOp),m={};L.forEach(s=>{const k=s.name+'|'+s.p;m[k]=m[k]||{n:s.name,p:s.p,q:0};m[k].q+=s.q});const R=Object.values(m);
+  return`<select onchange="fOp=this.value;render()"><option value="">Alle Bediener</option>${S.ops.map(o=>`<option ${o==fOp?'selected':''}>${esc(o)}</option>`).join('')}</select><div class=card><table><tr><th>Produkt</th><th class=r>Anz.</th><th class=r>Betrag</th></tr>${R.map(r=>`<tr><td>${esc(r.n)}</td><td class=r>${r.q}</td><td class=r>${eur(r.q*r.p)}</td></tr>`).join('')}</table><div class=tot>Gesamt: ${eur(R.reduce((a,r)=>a+r.q*r.p,0))}</div></div>`}
+ return'';
+}
+function render(){
+ const h=(V=='home'||!rdy['meta/appzugriff']||acc!==String(S.pwApp))?'':`<div class=top><button onclick="go('${BACK[V]}')">←</button><h2>${esc(TT()[V]||'')}</h2></div>`;
+ A.innerHTML=`<div class=bar><button onclick="showI=!showI;render()">?</button><span>${VER}</span></div>`+(showI?info():'')+h+body()}
+render();
+</script></body></html>
